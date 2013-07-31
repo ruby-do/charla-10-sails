@@ -1,0 +1,120 @@
+<div id="mainContainer">
+	<div class="span10">
+		<h4>Mi lista de TO-DOs</h4>
+		<form class="">
+			<fieldset>
+				<div class="control-group">
+					<div class="controls">
+						<input type="text" id="Tarea" placeholder="Tarea" 
+						data-bind="value:nuevaTarea.texto">
+					</div>
+				</div>
+				<div class="control-group">
+					<div class="controls">
+						<input type="text" id="Fecha" class="date" placeholder="Fecha"
+						data-bind="datepicker:nuevaTarea.fecha">
+					</div>
+				</div>
+				<input type="submit" value="ok" class="btn btn-info"
+				data-bind="click:add">
+			</fieldset>
+		</form>
+	</div>
+
+	<div class="clearFix"></div>
+
+	<div class="span10">
+		<ul data-bind="foreach:tareas">
+			<li>
+				<span data-bind="text:texto"></span>
+				<a href="#" class="btn btn-danger" data-bind="click:$root.delete">Borrar</a>
+			</li>
+		</ul>
+	</div>
+</div>
+
+<!-- jQuery para facilitar seleccionar los elementos del DOM -->
+<script src='/scripts/jquery-1.10.2.min.js'></script>
+
+<!-- jQueryUI para renderizar el control donde se escoge la fecha -->
+<script src='/scripts/jquery-ui-1.10.3/ui/jquery-ui.js'></script>
+
+<!-- KnockoutJS para hacer el binding entre el ViewModel y los controles -->
+<script src='/scripts/knockout-2.3.0.js'></script>
+<script src='/scripts/knockout.mapping-latest.js'></script>
+<script src='/scripts/knockout.bindings.js'></script>
+
+<script>
+var viewModel, socket;
+
+//ViewModel que describe una tarea
+var TareaViewModel = function(){
+	var self = this;
+
+	self.texto = ko.observable();
+	self.fecha = ko.observable();
+};
+
+//ViewModel principal que corre en este view
+var MainViewModel = function(data){
+	var self = this;
+	
+	self.tareas = ko.observableArray();
+	self.nuevaTarea = new TareaViewModel();
+
+	//Uso del plugin knockout.mapping para llenar la coleccion de tareas sin necesidad de 
+	//un constructor o tener que mapear cada propiedad
+	ko.mapping.fromJS(data, {}, self.tareas);
+
+	self.add = function(){
+		socket.request('/task/create', ko.toJS(self.nuevaTarea),
+			function(created){
+					//Por si quiero hacer algo con el resultado
+				});
+	}
+
+	self.delete = function(tareaBorrada){
+		socket.request('/task/destroy', {id: tareaBorrada.id()},
+			function(borrada){
+				//Por si quiere hacer algo con el resultado
+			});
+	}
+
+	self.markCompleted = function(tareaCompletada){
+		socket.request('/task/markCompleted', {id: tareaCompletada.id()},
+			function(completada){
+
+			});
+	}
+};
+
+//Definición del socket
+socket = io.connect();
+
+//Llamada original. Para traer todas las tareas. /task es lo mismo que llamar /task/index que trae la colección completa desde el data store
+socket.request('/task',{},function(response){
+	$(function(){
+		$('.date').datepicker();
+		viewModel = new MainViewModel(response);
+		ko.applyBindings(viewModel);
+	});
+
+	//Aqui escuchamos por un emit desde el servidor. Cada vez que se llama una accion en los controladores
+	//de sails, se emite un mensaje que contie el URI que se llama y el objeto que fue alterado/creado/borrado
+	socket.on('message', function(message){
+		if (message.uri.contains('task/create')){
+			var vm = ko.mapping.fromJS(message.data);
+			viewModel.tareas.push(vm);
+		}
+
+		if (message.uri.contains('task/destroy')){
+			var borrado = ko.utils.arrayFirst(viewModel.tareas(), function(item){
+				return item.id() == message.data.id;
+			});
+
+			viewModel.tareas.remove(borrado);
+		}
+	});
+});
+
+</script>
